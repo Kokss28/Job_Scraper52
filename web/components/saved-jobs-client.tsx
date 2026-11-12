@@ -32,50 +32,7 @@ export type SavedJobItem = {
   saved_at: string;
 };
 
-const DEFAULT_DEMO_SAVED: SavedJobItem[] = [
-  {
-    job_id: "demo_saved_1",
-    title: "Senior Python & Cloud Platform Engineer",
-    company: "Tata Consultancy Services",
-    location: "Bengaluru, Karnataka",
-    source: "LinkedIn",
-    link: "https://www.linkedin.com/jobs",
-    min_exp: 5,
-    max_exp: 8,
-    career_tier: "Senior (5 - 8 Yrs)",
-    status: "interviewing",
-    notes: "Completed Round 1 System Design. Technical hiring manager interview scheduled.",
-    saved_at: new Date(Date.now() - 86400000 * 2).toISOString(),
-  },
-  {
-    job_id: "demo_saved_2",
-    title: "Data Engineer - Snowflake & Apache Spark",
-    company: "Optum Global Solutions",
-    location: "Hyderabad, Telangana",
-    source: "Naukri",
-    link: "https://www.naukri.com",
-    min_exp: 3,
-    max_exp: 6,
-    career_tier: "Mid-Level (2 - 5 Yrs)",
-    status: "applied",
-    notes: "Applied via internal employee referral code.",
-    saved_at: new Date(Date.now() - 86400000 * 4).toISOString(),
-  },
-  {
-    job_id: "demo_saved_3",
-    title: "Full Stack Engineer (FastAPI & Next.js)",
-    company: "Citigroup Technology",
-    location: "Pune, Maharashtra",
-    source: "Indeed",
-    link: "https://in.indeed.com",
-    min_exp: 2,
-    max_exp: 5,
-    career_tier: "Mid-Level (2 - 5 Yrs)",
-    status: "saved",
-    notes: "Strong salary benchmark; tailored resume for microservices.",
-    saved_at: new Date(Date.now() - 86400000 * 6).toISOString(),
-  },
-];
+// DEFAULT_DEMO_SAVED removed to ensure zero fabricated data
 
 export function SavedJobsClient({
   serverRecords = [],
@@ -94,7 +51,7 @@ export function SavedJobsClient({
         // ignore
       }
     }
-    return serverRecords.length > 0 ? serverRecords : DEFAULT_DEMO_SAVED;
+    return serverRecords;
   });
 
   const [filterStatus, setFilterStatus] = useState<string>("all");

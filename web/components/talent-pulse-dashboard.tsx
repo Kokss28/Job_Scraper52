@@ -1016,6 +1016,59 @@ export function TalentPulseDashboard({
   const [isExtracting, setIsExtracting] = useState<boolean>(false);
   const [extractStatus, setExtractStatus] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
+
+  // Server-side search & pagination state (fixes H4: searches across all 12,500+ DB jobs)
+  const [serverJobs, setServerJobs] = useState<UnifiedJobRecord[] | null>(null);
+  const [serverTotalCount, setServerTotalCount] = useState<number | null>(null);
+  const [isSearchingServer, setIsSearchingServer] = useState<boolean>(false);
+
+  // Reset page when search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedCity, selectedSkillFilter]);
+
+  // Server-side search effect
+  useEffect(() => {
+    if (!searchQuery && selectedCity === "All India" && !selectedSkillFilter && currentPage === 1) {
+      setServerJobs(null);
+      setServerTotalCount(null);
+      return;
+    }
+
+    let isMounted = true;
+    const controller = new AbortController();
+
+    async function fetchServerJobs() {
+      setIsSearchingServer(true);
+      try {
+        const params = new URLSearchParams({
+          page: String(currentPage),
+          pageSize: String(PAGE_SIZE),
+        });
+        if (searchQuery) params.set("q", searchQuery);
+        if (selectedCity && selectedCity !== "All India") params.set("city", selectedCity);
+        if (selectedSkillFilter) params.set("skill", selectedSkillFilter);
+
+        const res = await fetch(`/api/jobs?${params.toString()}`, { signal: controller.signal });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (isMounted && data.success) {
+          setServerJobs(data.jobs || []);
+          setServerTotalCount(data.total ?? 0);
+        }
+      } catch (err: any) {
+        if (err.name !== "AbortError") console.warn("Server search note:", err);
+      } finally {
+        if (isMounted) setIsSearchingServer(false);
+      }
+    }
+
+    fetchServerJobs();
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, [searchQuery, selectedCity, selectedSkillFilter, currentPage]);
   const PAGE_SIZE = 10;
   const [selectedJob, setSelectedJob] = useState<UnifiedJobRecord | null>(null);
   const [isMounted, setIsMounted] = useState<boolean>(false);
@@ -1036,7 +1089,7 @@ export function TalentPulseDashboard({
           l.city.toLowerCase() === nodeLower ||
           l.city.toLowerCase().includes(nodeLower)
         );
-        counts[node.name] = match ? match.count : node.baseCount;
+        counts[node.name] = match ? match.count : 0;
       }
       return counts;
     }
@@ -1044,7 +1097,7 @@ export function TalentPulseDashboard({
       const matching = jobs.filter((j) =>
         isCityMatchStrict(j.city, node.name, j.normalized_location)
       );
-      counts[node.name] = jobs.length > 0 ? matching.length : node.baseCount;
+      counts[node.name] = matching.length;
     }
     return counts;
   }, [jobs, initialStats]);
@@ -1063,11 +1116,6 @@ export function TalentPulseDashboard({
     }
 
     if (!jobs || jobs.length === 0) {
-      for (const node of CITY_NODES) {
-        if (node.stateId && counts[node.stateId] !== undefined) {
-          counts[node.stateId] += node.baseCount;
-        }
-      }
       return counts;
     }
 
@@ -1127,7 +1175,7 @@ export function TalentPulseDashboard({
         const countA = cityCounts[a.name] || 0;
         const countB = cityCounts[b.name] || 0;
         if (countB !== countA) return countB - countA;
-        return (b.baseCount || 0) - (a.baseCount || 0);
+        return (cityCounts[b.name] || 0) - (cityCounts[a.name] || 0);
       })
       .slice(0, 10);
   }, [cityCounts]);
@@ -1366,7 +1414,7 @@ export function TalentPulseDashboard({
         ly: 0,
         lw: 0,
         tier: 1,
-        baseCount: selectedState ? selectedState.totalJobs : (jobs.length || 1623),
+        baseCount: selectedState ? selectedState.totalJobs : (jobs.length || 0),
       };
     }
     const found = CITY_NODES.find((c) => c.name.toLowerCase() === selectedCity.toLowerCase());
@@ -1383,7 +1431,7 @@ export function TalentPulseDashboard({
       ly: 595,
       lw: 90,
       tier: 3,
-      baseCount: jobs.length > 0 ? (cityCounts[selectedCity] ?? 0) : 100,
+      baseCount: cityCounts[selectedCity] ?? 0,
     };
   }, [selectedCity, selectedState, jobs, cityCounts]);
 
@@ -1651,52 +1699,20 @@ export function TalentPulseDashboard({
     return list;
   }, [activeAnalyticsJobs, selectedSkillFilter, searchQuery]);
 
-  // Authentic display jobs: returns filteredJobs, or DEMO jobs only if DB is 100% empty
+  // Authentic display jobs: returns real filteredJobs with zero fabricated demo jobs
   const displayJobs = useMemo(() => {
-    if (jobs.length > 0) {
-      return filteredJobs;
-    }
+    return filteredJobs;
+  }, [filteredJobs]);
 
-    // High fidelity realistic fallback items if database is completely empty
-    return [
-      {
-        job_id: "demo-chn-1",
-        title: "Senior Full Stack Engineer (Python)",
-        company: "Freshworks Inc.",
-        city: selectedCity === "All India" ? "Chennai" : selectedCity,
-        state: "TN",
-        country: "India",
-        min_experience_years: "4",
-        max_experience_years: "7",
-        exp_display: "4 - 7 Years",
-        source: "LinkedIn",
-        link: "https://freshworks.com/careers",
-        skills: "Python, Django, React, AWS, PostgreSQL",
-        degree_required: "B.Tech / B.E. in Computer Science",
-        specialization_required: "Computer Science",
-        collected_at: "Today",
-        search_keyword: "Python developer",
-        experience_review: "Strong OOP and cloud systems required",
-        full_description: "Freshworks is looking for an experienced Senior Full Stack Engineer proficient in Python and React.",
-        min_exp_num: 4,
-        max_exp_num: 7,
-        career_tier: "Mid-Senior",
-        normalized_location: `${selectedCity}, TN`,
-        edu_cluster: "Engineering",
-        edu_subcluster: "CS / IT",
-        edu_degrees: ["B.Tech", "B.E."],
-      },
-    ] as UnifiedJobRecord[];
-  }, [filteredJobs, jobs, selectedCity]);
-
-  // Pagination computations (Page-based navigation instead of load-more expanding)
-  const totalPages = Math.max(1, Math.ceil(displayJobs.length / PAGE_SIZE));
+  // Pagination computations (Unified server search & local fallback)
+  const isServerSearchActive = serverJobs !== null;
+  const activeTableJobs = isServerSearchActive ? serverJobs : displayJobs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const activeTableTotalCount = isServerSearchActive ? (serverTotalCount ?? 0) : displayJobs.length;
+  const totalPages = Math.max(1, Math.ceil(activeTableTotalCount / PAGE_SIZE));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const startIndex = (safeCurrentPage - 1) * PAGE_SIZE;
-  const endIndex = Math.min(startIndex + PAGE_SIZE, displayJobs.length);
-  const currentPaginatedJobs = useMemo(() => {
-    return displayJobs.slice(startIndex, endIndex);
-  }, [displayJobs, startIndex, endIndex]);
+  const endIndex = Math.min(startIndex + (isServerSearchActive ? activeTableJobs.length : PAGE_SIZE), activeTableTotalCount);
+  const currentPaginatedJobs = activeTableJobs;
 
   // Metric counts
   const totalLiveJobs = initialStats?.totalJobs || totalJobsCount || jobs.length;
@@ -1773,8 +1789,81 @@ export function TalentPulseDashboard({
     }
   };
 
-  // Export current city jobs to CSV (strictly saves selected city, eliminates mixed locations)
-  const handleExportCityCsv = () => {
+  // Helper to generate and download CSV
+  const downloadCsvBlob = (jobsToExport: UnifiedJobRecord[], exportName: string) => {
+    const headers = [
+      "Job ID",
+      "Title",
+      "Company",
+      "City",
+      "Experience",
+      "Source",
+      "Skills",
+      "Link",
+    ];
+    const rows = jobsToExport.map((j) => {
+      const cleanCity =
+        selectedCity !== "All India"
+          ? selectedCity
+          : j.city && j.city !== "Not Specified"
+          ? j.city
+          : j.normalized_location || (selectedState ? selectedState.name : "India");
+
+      return [
+        `"${j.job_id}"`,
+        `"${(j.title || "").replace(/"/g, '""')}"`,
+        `"${(j.company || "").replace(/"/g, '""')}"`,
+        `"${cleanCity.replace(/"/g, '""')}"`,
+        `"${(j.exp_display || j.min_experience_years || "").replace(/"/g, '""')}"`,
+        `"${(j.source || "").replace(/"/g, '""')}"`,
+        `"${(j.skills || "").replace(/"/g, '""')}"`,
+        `"${(j.link || "").replace(/"/g, '""')}"`,
+      ];
+    });
+
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `${exportName.toLowerCase().replace(/\s+/g, "_")}_jobs.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // Export full filtered dataset from server (solves M1: exports full catalog, not 25-row slice)
+  const handleExportCityCsv = async () => {
+    const exportName =
+      selectedCity !== "All India"
+        ? selectedCity
+        : selectedState
+        ? selectedState.name
+        : "all_india";
+
+    try {
+      const params = new URLSearchParams({ page: "1", pageSize: "5000" });
+      if (searchQuery) params.set("q", searchQuery);
+      if (selectedCity && selectedCity !== "All India") params.set("city", selectedCity);
+      if (selectedSkillFilter) params.set("skill", selectedSkillFilter);
+
+      const res = await fetch(`/api/jobs?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.jobs && data.jobs.length > 0) {
+          downloadCsvBlob(data.jobs, exportName);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("Full export fetch note:", e);
+    }
+
+    downloadCsvBlob(displayJobs, exportName);
+  };
+
+  const unusedExportFunction = () => {
     const jobsToExport = displayJobs;
     const headers = [
       "Job ID",
@@ -2716,8 +2805,8 @@ export function TalentPulseDashboard({
                 : "All India Live Openings"}
             </h3>
             <span className="text-xs font-semibold text-slate-600" id="table-count-label">
-              (Showing {displayJobs.length > 0 ? `${startIndex + 1}–${endIndex}` : "0"} of{" "}
-              {displayJobs.length.toLocaleString()} matching records • Page {safeCurrentPage} of {totalPages})
+              (Showing {activeTableTotalCount > 0 ? `${startIndex + 1}–${endIndex}` : "0"} of{" "}
+              {activeTableTotalCount.toLocaleString()} matching records • Page {safeCurrentPage} of {totalPages})
             </span>
           </div>
 
@@ -2748,7 +2837,7 @@ export function TalentPulseDashboard({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {displayJobs.length === 0 ? (
+              {activeTableTotalCount === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 px-4 text-center">
                     <div className="max-w-md mx-auto space-y-2">

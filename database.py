@@ -328,9 +328,19 @@ def clean_job_record(row: dict) -> dict:
     """
     Standardize a CSV row into a clean dictionary ready for Supabase upsert.
     Ensures all expected database schema columns exist and defaults are applied.
+    Rejects shifted/malformed rows where link is not a valid URL or job_id contains timestamps.
     """
+    job_id = (row.get("job_id") or "").strip()
+    link = (row.get("link") or "").strip()
+
+    # Reject malformed or shifted records
+    if not job_id or ":" in job_id or " " in job_id:
+        return {"job_id": ""}
+    if not (link.startswith("http://") or link.startswith("https://")):
+        return {"job_id": ""}
+
     return {
-        "job_id": (row.get("job_id") or "").strip(),
+        "job_id": job_id,
         "source": row.get("source") or "Not Specified",
         "title": row.get("title") or "Not Specified",
         "company": row.get("company") or "Not Specified",
