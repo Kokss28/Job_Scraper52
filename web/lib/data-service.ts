@@ -83,17 +83,28 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       const countRes = await supabase.from("jobs").select("job_id", { count: "exact", head: true });
       const total = countRes.count || 0;
 
-      const sampleRes = await supabase
-        .from("jobs")
-        .select("city, state, skills, collected_at")
-        .order("collected_at", { ascending: false })
-        .limit(500);
+      // Fetch up to 3,000 recent rows across ranges for accurate location & skills representation
+      const sampleRows: any[] = [];
+      const CHUNK = 1000;
+      for (let p = 0; p < 3; p++) {
+        const { data } = await supabase
+          .from("jobs")
+          .select("city, state, skills, collected_at")
+          .order("collected_at", { ascending: false })
+          .range(p * CHUNK, (p + 1) * CHUNK - 1);
+        if (data && data.length > 0) {
+          sampleRows.push(...data);
+          if (data.length < CHUNK) break;
+        } else {
+          break;
+        }
+      }
 
       const locMap = new Map<string, number>();
       const skillMap = new Map<string, number>();
       const dateMap = new Map<string, number>();
 
-      for (const r of sampleRes.data || []) {
+      for (const r of sampleRows) {
         if (r.city && r.city !== "Not Specified") {
           const key = `${r.state || "Other"}||${r.city}`;
           locMap.set(key, (locMap.get(key) || 0) + 1);

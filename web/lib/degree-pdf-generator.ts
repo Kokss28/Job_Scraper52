@@ -348,7 +348,11 @@ export function generateDirectDegreePdf(data: DegreeReportData, selectedCategory
     job.title,
     job.company,
     job.city,
-    job.min_exp_years === 0 ? "Fresher (0y)" : `${job.min_exp_years}-${job.max_exp_years} yrs`,
+    job.min_exp_years === null
+      ? "Not Specified"
+      : job.min_exp_years === 0
+      ? "Fresher (0y)"
+      : `${job.min_exp_years}-${job.max_exp_years ?? job.min_exp_years} yrs`,
     job.skills.slice(0, 4).join(", "),
   ]);
 

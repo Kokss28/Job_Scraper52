@@ -405,7 +405,7 @@ ${data.sampleJobs
             <span>Select Your Target Academic Degree:</span>
           </div>
           <div className="text-xs text-indigo-600 font-semibold">
-            Computed across {data?.totalMarketJobs.toLocaleString() || "6,300+"} live verified job postings
+            Computed across {data?.totalMarketJobs ? data.totalMarketJobs.toLocaleString() : "..."} live verified job postings
           </div>
         </div>
 
@@ -444,9 +444,9 @@ ${data.sampleJobs
           <div className="p-3.5 bg-indigo-50/70 border border-indigo-200/80 rounded-xl text-xs text-indigo-950 flex items-start gap-2.5">
             <Info className="w-4 h-4 text-indigo-600 flex-shrink-0 mt-0.5" />
             <div>
-              <strong className="font-bold">What is \"All Degrees (Any Graduate / Open)\"?</strong>
+              <strong className="font-bold">What is &apos;All Degrees (Any Graduate / Open)&apos;?</strong>
               <p className="text-slate-600 mt-0.5 leading-relaxed">
-                This filter aggregates all live job postings that do not enforce a strict degree prerequisite or explicitly state \"Any Graduate / Any Bachelor Degree Welcome\". It provides an unfiltered overview of all available entry points across India.
+                This filter aggregates all live job postings that do not enforce a strict degree prerequisite or explicitly state &quot;Any Graduate / Any Bachelor Degree Welcome&quot;. It provides an unfiltered overview of all available entry points across India.
               </p>
             </div>
           </div>
@@ -1154,8 +1154,18 @@ ${data.sampleJobs
                           </span>
                         </td>
                         <td className="py-3 px-4 whitespace-nowrap min-w-[110px]">
-                          <span className="inline-flex items-center whitespace-nowrap shrink-0 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            {job.min_exp_years === 0 ? "Fresher (0y)" : `${job.min_exp_years}–${job.max_exp_years} yrs`}
+                          <span className={`inline-flex items-center whitespace-nowrap shrink-0 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                            job.min_exp_years === null
+                              ? "bg-slate-100 text-slate-600 border border-slate-200"
+                              : job.min_exp_years <= 1
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                          }`}>
+                            {job.min_exp_years === null
+                              ? "Not Specified"
+                              : job.min_exp_years === 0 && (job.max_exp_years === null || job.max_exp_years <= 1)
+                              ? "Fresher (0-1y)"
+                              : `${job.min_exp_years}${job.max_exp_years !== null ? `–${job.max_exp_years}` : "+"} yrs`}
                           </span>
                         </td>
                         <td className="py-3 px-4">

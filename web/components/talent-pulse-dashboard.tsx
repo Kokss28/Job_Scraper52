@@ -1085,11 +1085,12 @@ export function TalentPulseDashboard({
     if (initialStats?.byLocation && initialStats.byLocation.length > 0) {
       for (const node of CITY_NODES) {
         const nodeLower = node.name.toLowerCase();
-        const match = initialStats.byLocation.find((l) =>
+        // Sum all matching sub-locations and variants rather than stopping at the first find
+        const matching = initialStats.byLocation.filter((l) =>
           l.city.toLowerCase() === nodeLower ||
           l.city.toLowerCase().includes(nodeLower)
         );
-        counts[node.name] = match ? match.count : 0;
+        counts[node.name] = matching.reduce((sum, l) => sum + (l.count || 0), 0);
       }
       return counts;
     }
@@ -1718,9 +1719,11 @@ export function TalentPulseDashboard({
   const totalLiveJobs = initialStats?.totalJobs || totalJobsCount || jobs.length;
   const currentCityCount =
     selectedCity !== "All India"
-      ? (cityCounts[selectedCity] !== undefined
-          ? cityCounts[selectedCity]
-          : activeAnalyticsJobs.length)
+      ? (serverTotalCount !== null
+          ? serverTotalCount
+          : (cityCounts[selectedCity] !== undefined
+              ? cityCounts[selectedCity]
+              : activeAnalyticsJobs.length))
       : selectedState
       ? selectedState.totalJobs
       : totalLiveJobs;
@@ -2171,7 +2174,7 @@ export function TalentPulseDashboard({
                   <>
                     <span className="text-slate-400 font-bold">/</span>
                     <span className="font-extrabold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-                      {selectedCity} ({cityCounts[selectedCity] || 0} Jobs)
+                      {selectedCity} ({currentCityCount.toLocaleString()} Jobs)
                     </span>
                   </>
                 )}

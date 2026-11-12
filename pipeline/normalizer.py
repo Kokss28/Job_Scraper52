@@ -1778,15 +1778,17 @@ def _fallback_job_id(
         default="",
     )
 
-    if link:
-        base = f"{source_clean}|{link.lower()}"
+    # Strip transient tracking query params from URLs for deterministic stable IDs across runs
+    clean_link = link.split("?")[0].rstrip("/").lower() if link else ""
+    if clean_link:
+        base = f"{source_clean}|{clean_link}"
     else:
         base = "|".join(
             [
                 source_clean,
-                title.lower(),
-                company.lower(),
-                location.lower(),
+                title.strip().lower(),
+                company.strip().lower(),
+                location.strip().lower(),
             ]
         )
 

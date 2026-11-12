@@ -70,8 +70,8 @@ export interface DegreeReportData {
     company: string;
     category_code: string;
     city: string;
-    min_exp_years: number;
-    max_exp_years: number;
+    min_exp_years: number | null;
+    max_exp_years: number | null;
     degree_required: string;
     skills: string[];
     link: string;
@@ -604,11 +604,11 @@ export function generateDegreeCareerReport(
     });
   }
 
-  // 2. Filter by experience
+  // 2. Filter by experience (strictly require explicitly specified experience to avoid inflating fresher counts)
   if (experienceFilter === "fresher") {
-    filtered = filtered.filter((j) => (j.min_exp_num ?? 0) <= 1);
+    filtered = filtered.filter((j) => j.min_exp_num !== null && j.min_exp_num <= 1);
   } else if (experienceFilter === "junior") {
-    filtered = filtered.filter((j) => (j.min_exp_num ?? 0) <= 3);
+    filtered = filtered.filter((j) => j.min_exp_num !== null && j.min_exp_num <= 3);
   }
 
   // 3. Search query filter
@@ -635,11 +635,12 @@ export function generateDegreeCareerReport(
   const eligibleJobsCount = filtered.length;
   const eligibilityRate = totalMarketJobs > 0 ? Math.round((eligibleJobsCount / totalMarketJobs) * 100) : 0;
 
-  const fresherJobsCount = filtered.filter((j) => (j.min_exp_num ?? 0) <= 1).length;
+  const fresherJobsCount = filtered.filter((j) => j.min_exp_num !== null && j.min_exp_num <= 1).length;
   const fresherRate = eligibleJobsCount > 0 ? Math.round((fresherJobsCount / eligibleJobsCount) * 100) : 0;
 
-  const expSum = filtered.reduce((acc, j) => acc + (j.min_exp_num ?? 0), 0);
-  const avgMinExp = eligibleJobsCount > 0 ? Math.round((expSum / eligibleJobsCount) * 10) / 10 : 0;
+  const knownExpJobs = filtered.filter((j) => j.min_exp_num !== null);
+  const expSum = knownExpJobs.reduce((acc, j) => acc + (j.min_exp_num as number), 0);
+  const avgMinExp = knownExpJobs.length > 0 ? Math.round((expSum / knownExpJobs.length) * 10) / 10 : 0;
 
   // 5. Compute Top Categories (DA, DE, AI, SE, QA, Cloud) using Title-First Classification
   const catCodeCounts: Record<string, number> = {
@@ -777,8 +778,8 @@ export function generateDegreeCareerReport(
       percentage: eligibleJobsCount > 0 ? Math.round((count / eligibleJobsCount) * 100) : 0,
     }));
 
-  // 8. Extract Sample Jobs (expanded slice & category_code tagged for 100% accurate filtering)
-  const sampleJobs = filtered.slice(0, 80).map((j) => {
+  // 8. Extract Sample Jobs (return ALL filtered jobs tagged for 100% accurate category & skill filtering)
+  const sampleJobs = filtered.map((j) => {
     let skillList: string[] = [];
     if (j.skills && j.skills !== "Not Specified") {
       skillList = j.skills
@@ -803,8 +804,8 @@ export function generateDegreeCareerReport(
         const c = String(j.normalized_location || j.city || "India").trim();
         return (c.toUpperCase() === "CT" || c.toUpperCase() === "CT, INDIA") ? "Pan-India (Flexible)" : c;
       })(),
-      min_exp_years: j.min_exp_num ?? 0,
-      max_exp_years: j.max_exp_num ?? 2,
+      min_exp_years: j.min_exp_num !== null ? j.min_exp_num : null,
+      max_exp_years: j.max_exp_num !== null ? j.max_exp_num : null,
       degree_required: j.degree_required || "Any Graduate",
       skills: skillList,
       link: j.link || "#",
