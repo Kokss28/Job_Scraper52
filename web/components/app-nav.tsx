@@ -19,44 +19,33 @@ export function AppNav({
   const navItems = [
     {
       id: "nav-overview",
-      label: "Overview Dashboard",
+      label: "Overview / Talent Pulse",
       href: "/dashboard",
     },
-    {
-      id: "nav-live-extraction",
-      label: "Live Extraction",
-      href: "/dashboard/scraper",
-    },
-    {
-      id: "nav-india-map",
-      label: "India Job Map",
-      href: "/dashboard/market",
-    },
-
     {
       id: "nav-degree-advisor",
       label: "Degree Career Advisor",
       href: "/dashboard/degree-advisor",
     },
     {
-      id: "nav-jobs-directory",
-      label: "All Jobs Directory",
-      href: "/dashboard#directory",
+      id: "nav-market-trends",
+      label: "Market Demands & Trends",
+      href: "/dashboard/market",
     },
     {
-      id: "nav-csv-exports",
-      label: "CSV Exports",
-      href: "/dashboard#export",
+      id: "nav-live-extraction",
+      label: "Scraper Studio & Live Runs",
+      href: "/dashboard/scraper",
     },
     {
       id: "nav-extraction-history",
       label: "Extraction History",
-      href: "/admin",
+      href: "/dashboard/extraction-history",
     },
     {
-      id: "nav-settings",
-      label: "Settings",
-      href: "/setup",
+      id: "nav-admin-settings",
+      label: "Admin & Settings",
+      href: "/admin",
     },
   ];
 

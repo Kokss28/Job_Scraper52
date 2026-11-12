@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   RefreshCw,
   Building,
+  Building2,
   Briefcase,
   Layers,
   ArrowUpRight,
@@ -21,6 +22,12 @@ import {
   TrendingUp,
   ChevronLeft,
   ChevronRight,
+  LayoutGrid,
+  List,
+  Loader2,
+  Flame,
+  Star,
+  Clock,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -86,9 +93,9 @@ const CITY_NODES: CityNode[] = [
     x: 186,
     y: 210,
     labelPos: "right",
-    lx: 206,
+    lx: 202,
     ly: 198,
-    lw: 88,
+    lw: 82,
     tier: 1,
     baseCount: 2840,
   },
@@ -100,9 +107,9 @@ const CITY_NODES: CityNode[] = [
     x: 105,
     y: 428,
     labelPos: "left",
-    lx: 12,
-    ly: 416,
-    lw: 94,
+    lx: 16,
+    ly: 418,
+    lw: 84,
     tier: 1,
     baseCount: 2110,
   },
@@ -114,9 +121,9 @@ const CITY_NODES: CityNode[] = [
     x: 130,
     y: 456,
     labelPos: "right",
-    lx: 148,
+    lx: 146,
     ly: 456,
-    lw: 88,
+    lw: 80,
     tier: 1,
     baseCount: 1420,
   },
@@ -128,9 +135,9 @@ const CITY_NODES: CityNode[] = [
     x: 236,
     y: 462,
     labelPos: "right",
-    lx: 254,
-    ly: 450,
-    lw: 110,
+    lx: 252,
+    ly: 448,
+    lw: 98,
     tier: 1,
     baseCount: 2530,
   },
@@ -142,9 +149,9 @@ const CITY_NODES: CityNode[] = [
     x: 418,
     y: 358,
     labelPos: "right",
-    lx: 436,
-    ly: 346,
-    lw: 96,
+    lx: 432,
+    ly: 348,
+    lw: 86,
     tier: 1,
     baseCount: 890,
   },
@@ -156,9 +163,9 @@ const CITY_NODES: CityNode[] = [
     x: 192,
     y: 570,
     labelPos: "left",
-    lx: 68,
-    ly: 558,
-    lw: 116,
+    lx: 78,
+    ly: 560,
+    lw: 106,
     tier: 1,
     baseCount: 4210,
   },
@@ -170,9 +177,9 @@ const CITY_NODES: CityNode[] = [
     x: 248,
     y: 576,
     labelPos: "right",
-    lx: 268,
-    ly: 564,
-    lw: 118,
+    lx: 266,
+    ly: 566,
+    lw: 94,
     tier: 1,
     baseCount: 1842,
   },
@@ -184,9 +191,9 @@ const CITY_NODES: CityNode[] = [
     x: 184,
     y: 602,
     labelPos: "left",
-    lx: 68,
-    ly: 600,
-    lw: 106,
+    lx: 76,
+    ly: 598,
+    lw: 100,
     tier: 1,
     baseCount: 420,
   },
@@ -200,9 +207,9 @@ const CITY_NODES: CityNode[] = [
     x: 100,
     y: 340,
     labelPos: "left",
-    lx: 8,
-    ly: 328,
-    lw: 88,
+    lx: 10,
+    ly: 330,
+    lw: 84,
     tier: 1,
     baseCount: 650,
   },
@@ -214,9 +221,9 @@ const CITY_NODES: CityNode[] = [
     x: 173,
     y: 637,
     labelPos: "left",
-    lx: 82,
+    lx: 74,
     ly: 630,
-    lw: 86,
+    lw: 88,
     tier: 1,
     baseCount: 520,
   },
@@ -229,8 +236,8 @@ const CITY_NODES: CityNode[] = [
     y: 670,
     labelPos: "right",
     lx: 202,
-    ly: 660,
-    lw: 132,
+    ly: 664,
+    lw: 114,
     tier: 2,
     baseCount: 380,
   },
@@ -1017,24 +1024,35 @@ export function TalentPulseDashboard({
   const [extractStatus, setExtractStatus] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
 
-  // Server-side search & pagination state (fixes H4: searches across all 12,500+ DB jobs)
-  const [serverJobs, setServerJobs] = useState<UnifiedJobRecord[] | null>(null);
-  const [serverTotalCount, setServerTotalCount] = useState<number | null>(null);
+  // Table view modes and multi-factor filters
+  const [tableViewMode, setTableViewMode] = useState<"table" | "grid">("table");
+  const [selectedExperienceFilter, setSelectedExperienceFilter] = useState<string>("all");
+  const [selectedSourceFilter, setSelectedSourceFilter] = useState<string>("all");
+  const [tablePageSize, setTablePageSize] = useState<number>(25);
+  const [exportTimeframe, setExportTimeframe] = useState<string>("all");
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+
+  // Server-side search & pagination state (streamed live from Supabase across all 11,241 jobs)
+  const [serverJobs, setServerJobs] = useState<UnifiedJobRecord[] | null>(initialJobs);
+  const [serverTotalCount, setServerTotalCount] = useState<number | null>(totalJobsCount || 11241);
   const [isSearchingServer, setIsSearchingServer] = useState<boolean>(false);
 
-  // Reset page when search query changes
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(searchInput.trim());
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // Reset page when key filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedCity, selectedSkillFilter]);
+  }, [selectedCity, selectedState, selectedSkillFilter, selectedSourceFilter, selectedExperienceFilter, tablePageSize]);
 
-  // Server-side search effect
+  // Server-side query effect (always sorts most recent openings first)
   useEffect(() => {
-    if (!searchQuery && selectedCity === "All India" && !selectedSkillFilter && currentPage === 1) {
-      setServerJobs(null);
-      setServerTotalCount(null);
-      return;
-    }
-
     let isMounted = true;
     const controller = new AbortController();
 
@@ -1043,11 +1061,18 @@ export function TalentPulseDashboard({
       try {
         const params = new URLSearchParams({
           page: String(currentPage),
-          pageSize: String(PAGE_SIZE),
+          pageSize: String(tablePageSize),
+          sort: "recent",
         });
         if (searchQuery) params.set("q", searchQuery);
-        if (selectedCity && selectedCity !== "All India") params.set("city", selectedCity);
+        if (selectedCity && selectedCity !== "All India") {
+          params.set("city", selectedCity);
+        } else if (selectedState) {
+          params.set("state", selectedState.name);
+        }
         if (selectedSkillFilter) params.set("skill", selectedSkillFilter);
+        if (selectedSourceFilter && selectedSourceFilter !== "all") params.set("source", selectedSourceFilter);
+        if (selectedExperienceFilter && selectedExperienceFilter !== "all") params.set("experience", selectedExperienceFilter);
 
         const res = await fetch(`/api/jobs?${params.toString()}`, { signal: controller.signal });
         if (!res.ok) return;
@@ -1068,8 +1093,16 @@ export function TalentPulseDashboard({
       isMounted = false;
       controller.abort();
     };
-  }, [searchQuery, selectedCity, selectedSkillFilter, currentPage]);
-  const PAGE_SIZE = 10;
+  }, [
+    searchQuery,
+    selectedCity,
+    selectedState,
+    selectedSkillFilter,
+    selectedSourceFilter,
+    selectedExperienceFilter,
+    tablePageSize,
+    currentPage,
+  ]);
   const [selectedJob, setSelectedJob] = useState<UnifiedJobRecord | null>(null);
   const [isMounted, setIsMounted] = useState<boolean>(false);
   const [mapViewMode, setMapViewMode] = useState<"all" | "major">("all");
@@ -1116,15 +1149,6 @@ export function TalentPulseDashboard({
       counts[state.id] = 0;
     }
 
-    if (!jobs || jobs.length === 0) {
-      return counts;
-    }
-
-    const stateNameMap = new Map<string, string>();
-    for (const s of INDIA_STATES) {
-      stateNameMap.set(s.name.toLowerCase(), s.id);
-      stateNameMap.set(s.id.toLowerCase(), s.id);
-    }
     const cityToStateId = new Map<string, string>();
     for (const c of CITY_NODES) {
       if (c.stateId) {
@@ -1132,42 +1156,43 @@ export function TalentPulseDashboard({
       }
     }
 
-    for (const j of jobs) {
-      let matchedStateId: string | null = null;
-      if (j.state) {
-        const sLower = j.state.trim().toLowerCase();
-        if (stateNameMap.has(sLower)) {
-          matchedStateId = stateNameMap.get(sLower)!;
+    const stateNameToId = new Map<string, string>();
+    for (const s of INDIA_STATES) {
+      stateNameToId.set(s.name.toLowerCase(), s.id);
+      stateNameToId.set(s.id.toLowerCase(), s.id);
+    }
+
+    if (initialStats?.byLocation && initialStats.byLocation.length > 0) {
+      for (const loc of initialStats.byLocation) {
+        const cLower = (loc.city || "").trim().toLowerCase();
+        const sLower = (loc.state || "").trim().toLowerCase();
+        let stateId = cityToStateId.get(cLower);
+        if (!stateId && sLower) {
+          stateId = stateNameToId.get(sLower);
         }
-      }
-      if (!matchedStateId && j.city) {
-        const cLower = j.city.trim().toLowerCase();
-        if (cityToStateId.has(cLower)) {
-          matchedStateId = cityToStateId.get(cLower)!;
-        } else {
+        if (!stateId) {
           for (const node of CITY_NODES) {
-            if (isCityMatchStrict(j.city, node.name, j.normalized_location)) {
-              matchedStateId = node.stateId;
+            if (cLower.includes(node.name.toLowerCase())) {
+              stateId = node.stateId;
               break;
             }
           }
         }
-      }
-      if (!matchedStateId && j.normalized_location) {
-        const locLower = j.normalized_location.toLowerCase();
-        for (const s of INDIA_STATES) {
-          if (locLower.includes(s.name.toLowerCase())) {
-            matchedStateId = s.id;
-            break;
-          }
+        if (stateId && counts[stateId] !== undefined) {
+          counts[stateId] += Number(loc.count || 0);
         }
       }
-      if (matchedStateId && counts[matchedStateId] !== undefined) {
-        counts[matchedStateId]++;
+      return counts;
+    }
+
+    for (const node of CITY_NODES) {
+      const cnt = cityCounts[node.name] || 0;
+      if (node.stateId && counts[node.stateId] !== undefined) {
+        counts[node.stateId] += cnt;
       }
     }
     return counts;
-  }, [jobs]);
+  }, [initialStats, cityCounts]);
 
   // Top 10 locations calculated dynamically by total job count from database
   const top10NationalHubs = useMemo(() => {
@@ -1243,7 +1268,18 @@ export function TalentPulseDashboard({
 
   // State selection handler: drills down into Level 2 (State view)
   const handleStateClick = (state: { id: string; name: string }) => {
+    // If clicking the currently selected state, toggle back to India map
+    if (selectedState?.id === state.id) {
+      handleResetToNational();
+      return;
+    }
+
     const totalJobs = stateJobCounts[state.id] || 0;
+    // If state has 0 jobs, don't drill down into empty view
+    if (totalJobs === 0) {
+      return;
+    }
+
     setSelectedState({
       id: state.id,
       code: state.id.toUpperCase(),
@@ -1358,7 +1394,9 @@ export function TalentPulseDashboard({
 
     // LEVEL 2: State Drill-Down (State Selected)
     if (selectedState) {
-      list = list.filter((c) => c.stateId === selectedState.id);
+      const stateCities = CITY_NODES.filter((c) => c.stateId === selectedState.id);
+      const citiesWithCounts = stateCities.filter((c) => (cityCounts[c.name] || 0) > 0);
+      list = citiesWithCounts.length > 0 ? citiesWithCounts : stateCities.slice(0, 3);
     }
 
     // If a specific city is selected, ensure it remains in the rendered list so user never loses sight of selection
@@ -1705,18 +1743,19 @@ export function TalentPulseDashboard({
     return filteredJobs;
   }, [filteredJobs]);
 
-  // Pagination computations (Unified server search & local fallback)
-  const isServerSearchActive = serverJobs !== null;
-  const activeTableJobs = isServerSearchActive ? serverJobs : displayJobs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-  const activeTableTotalCount = isServerSearchActive ? (serverTotalCount ?? 0) : displayJobs.length;
-  const totalPages = Math.max(1, Math.ceil(activeTableTotalCount / PAGE_SIZE));
-  const safeCurrentPage = Math.min(currentPage, totalPages);
-  const startIndex = (safeCurrentPage - 1) * PAGE_SIZE;
-  const endIndex = Math.min(startIndex + (isServerSearchActive ? activeTableJobs.length : PAGE_SIZE), activeTableTotalCount);
-  const currentPaginatedJobs = activeTableJobs;
-
   // Metric counts
   const totalLiveJobs = initialStats?.totalJobs || totalJobsCount || jobs.length;
+
+  // Pagination computations (Unified server search & local fallback)
+  const isServerSearchActive = serverJobs !== null;
+  const activeTableJobs = serverJobs ?? displayJobs.slice((currentPage - 1) * tablePageSize, currentPage * tablePageSize);
+  const activeTableTotalCount = serverTotalCount !== null ? serverTotalCount : totalLiveJobs;
+  const totalPages = Math.max(1, Math.ceil(activeTableTotalCount / tablePageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * tablePageSize;
+  const endIndex = Math.min(startIndex + activeTableJobs.length, activeTableTotalCount);
+  const currentPaginatedJobs = activeTableJobs;
+
   const currentCityCount =
     selectedCity !== "All India"
       ? (serverTotalCount !== null
@@ -1836,20 +1875,44 @@ export function TalentPulseDashboard({
     URL.revokeObjectURL(url);
   };
 
-  // Export full filtered dataset from server (solves M1: exports full catalog, not 25-row slice)
-  const handleExportCityCsv = async () => {
+  // Export full filtered dataset from server with optional extraction timeframe
+  const handleExportCityCsv = async (timeframeOverride?: string) => {
+    const tf = timeframeOverride || exportTimeframe;
+    const tfReadable: Record<string, string> = {
+      "1h": "Last 1 Hour",
+      "2h": "Last 2 Hours",
+      "24h": "Last 1 Day",
+      "7d": "Last 7 Days",
+    };
+    const readableLabel = tfReadable[tf] || tf;
+
+    let hoursParam = "";
+    let tfLabel = "all_time";
+    if (tf === "1h") { hoursParam = "1"; tfLabel = "last_1h"; }
+    else if (tf === "2h") { hoursParam = "2"; tfLabel = "last_2h"; }
+    else if (tf === "24h") { hoursParam = "24"; tfLabel = "last_24h"; }
+    else if (tf === "7d") { hoursParam = "168"; tfLabel = "last_7d"; }
+
     const exportName =
       selectedCity !== "All India"
-        ? selectedCity
+        ? `${selectedCity.toLowerCase().replace(/\s+/g, "_")}_jobs_${tfLabel}`
         : selectedState
-        ? selectedState.name
-        : "all_india";
+        ? `${selectedState.name.toLowerCase().replace(/\s+/g, "_")}_jobs_${tfLabel}`
+        : `all_india_jobs_${tfLabel}`;
 
+    setIsExporting(true);
     try {
-      const params = new URLSearchParams({ page: "1", pageSize: "5000" });
+      const params = new URLSearchParams({ export: "true" });
       if (searchQuery) params.set("q", searchQuery);
-      if (selectedCity && selectedCity !== "All India") params.set("city", selectedCity);
+      if (selectedCity && selectedCity !== "All India") {
+        params.set("city", selectedCity);
+      } else if (selectedState) {
+        params.set("state", selectedState.name);
+      }
       if (selectedSkillFilter) params.set("skill", selectedSkillFilter);
+      if (selectedSourceFilter && selectedSourceFilter !== "all") params.set("source", selectedSourceFilter);
+      if (selectedExperienceFilter && selectedExperienceFilter !== "all") params.set("experience", selectedExperienceFilter);
+      if (hoursParam) params.set("hours", hoursParam);
 
       const res = await fetch(`/api/jobs?${params.toString()}`);
       if (res.ok) {
@@ -1857,13 +1920,34 @@ export function TalentPulseDashboard({
         if (data.jobs && data.jobs.length > 0) {
           downloadCsvBlob(data.jobs, exportName);
           return;
+        } else if (hoursParam) {
+          alert(`No job extraction data is available for the selected timeframe (${readableLabel}).`);
+          return;
+        } else {
+          alert("No jobs match the current filter criteria to export.");
+          return;
         }
       }
     } catch (e) {
       console.warn("Full export fetch note:", e);
+      if (hoursParam) {
+        alert(`No job extraction data is available for the selected timeframe (${readableLabel}).`);
+        return;
+      }
+    } finally {
+      setIsExporting(false);
     }
 
-    downloadCsvBlob(displayJobs, exportName);
+    if (hoursParam) {
+      alert(`No job extraction data is available for the selected timeframe (${readableLabel}).`);
+      return;
+    }
+
+    if (displayJobs.length > 0) {
+      downloadCsvBlob(displayJobs, exportName);
+    } else {
+      alert("No jobs match the current filter criteria to export.");
+    }
   };
 
   const unusedExportFunction = () => {
@@ -1999,16 +2083,6 @@ export function TalentPulseDashboard({
             <span>{isSyncing ? "Syncing..." : "Sync DB"}</span>
           </button>
 
-          {/* Export CSV Button */}
-          <button
-            onClick={handleExportCityCsv}
-            id="export-csv-btn"
-            className="px-3.5 py-2 text-xs font-bold rounded-xl bg-white hover:bg-slate-50 text-slate-800 hover:text-slate-950 border border-slate-300 transition-colors flex items-center gap-1.5 shadow-xs"
-          >
-            <Download className="w-3.5 h-3.5 text-slate-600" />
-            <span>Export CSV</span>
-          </button>
-
           {/* Selected Region Pill Badge */}
           <button
             type="button"
@@ -2121,113 +2195,76 @@ export function TalentPulseDashboard({
       {/* ==================================================================== */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* LEFT CARD: Geographic Job Density (India) */}
-        <div className="lg:col-span-7 xl:col-span-7 bg-white rounded-2xl p-6 border border-slate-200 shadow-xs flex flex-col">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2.5">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-slate-900">
-                  Geographic Job Density (India)
-                </h2>
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  {selectedState
-                    ? `${selectedState.name} (${displayedCityNodes.length} Hubs)`
-                    : `${citiesWithJobs.length} Active Hubs`}
-                </span>
-              </div>
-              <p className="text-xs text-slate-600 mt-0.5 font-medium">
+        <div id="geographic-map-card" className="lg:col-span-7 xl:col-span-7 bg-white rounded-2xl p-6 border border-slate-200 shadow-xs flex flex-col">
+          {/* Clean Map Header */}
+          <div className="flex items-center justify-between pb-3">
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-base font-bold text-slate-900">
+                Geographic Job Density (India)
+              </h2>
+              <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 {selectedState
-                  ? `Drill-down view of ${selectedState.name} — click local city hubs to isolate city demand`
-                  : "National proportional density map — bubble sizes scale by live hiring volume. Click any state to drill down"}
-              </p>
+                  ? `${selectedState.name} (${(stateJobCounts[selectedState.id] || 0).toLocaleString()} Openings)`
+                  : `${citiesWithJobs.length} Active Tech Hubs`}
+              </span>
             </div>
-          </div>
 
-          {/* 2-Level Progressive Disclosure Navigation & Breadcrumb Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 pt-1 border-b border-slate-100 text-xs">
-            {selectedState ? (
-              /* Level 2 Breadcrumb Navigation */
-              <div className="flex items-center gap-1.5 flex-wrap" id="map-state-breadcrumb">
-                <button
-                  type="button"
-                  onClick={handleResetToNational}
-                  className="font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 transition-colors cursor-pointer"
-                >
-                  <span>All India</span>
-                </button>
-                <span className="text-slate-400 font-bold">/</span>
-                <button
-                  type="button"
-                  onClick={() => setSelectedCity("All India")}
-                  className={`font-bold transition-colors cursor-pointer ${
-                    selectedCity === "All India"
-                      ? "text-slate-900 bg-indigo-50/80 px-2 py-0.5 rounded-md border border-indigo-200"
-                      : "text-indigo-600 hover:text-indigo-800 hover:underline"
-                  }`}
-                >
-                  <span>{selectedState.name}</span>
-                  <span className="ml-1 text-[11px] font-semibold text-indigo-700">
-                    ({selectedState.totalJobs.toLocaleString()} Jobs)
-                  </span>
-                </button>
-                {selectedCity !== "All India" && (
-                  <>
-                    <span className="text-slate-400 font-bold">/</span>
-                    <span className="font-extrabold text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-                      {selectedCity} ({currentCityCount.toLocaleString()} Jobs)
-                    </span>
-                  </>
-                )}
-              </div>
-            ) : (
-              /* Level 1 National Overview Info */
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-indigo-600 inline-block"></span>
-                  National Overview
-                </span>
-                <span className="text-slate-400">•</span>
-                <span className="text-xs text-slate-500 font-medium">
-                  Showing {displayedCityNodes.length} Proportional Hubs • Click any state polygon or hub to drill down
-                </span>
-              </div>
-            )}
-
-            {/* Reset Controls */}
-            <div className="flex items-center gap-2 shrink-0">
-              {selectedState && (
-                <button
-                  type="button"
-                  onClick={handleResetToNational}
-                  id="reset-view-breadcrumb-btn"
-                  className="text-xs font-bold px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 shadow-2xs transition-all flex items-center gap-1 cursor-pointer"
-                  title="Reset camera back to National Overview"
-                >
-                  <X className="w-3.5 h-3.5" />
-                  <span>Reset View</span>
-                </button>
-              )}
+            {selectedState && (
               <button
                 type="button"
                 onClick={handleResetToNational}
-                id="reset-to-india-btn"
-                className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-all whitespace-nowrap ${
-                  !selectedState && selectedCity === "All India"
-                    ? "border-slate-200 bg-slate-50 text-slate-400 cursor-default"
-                    : "border-slate-300 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-950 shadow-xs cursor-pointer"
-                }`}
+                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 cursor-pointer transition-colors"
+                title="Click to reset back to All India"
               >
-                Reset to India
+                <span>← Back to India Map</span>
               </button>
-            </div>
+            )}
           </div>
 
-          {/* Map Visualization Canvas: Proportional Density Bubble Map */}
-          <div className="mt-3 flex-1 min-h-[460px] rounded-xl border border-slate-200 bg-[#FAFAFC] relative overflow-hidden select-none flex flex-col items-center justify-between p-3">
+          {/* Map Visualization Canvas: Clean Interactive Map */}
+          <div
+            className="mt-1 flex-1 min-h-[470px] rounded-xl border border-slate-200/80 bg-gradient-to-b from-[#F8FAFC] to-[#F1F5F9] relative overflow-hidden select-none flex flex-col items-center justify-between p-3 cursor-default"
+            onClick={(e) => {
+              // Click outside any state or hub resets back to National Overview
+              if (e.target === e.currentTarget && (selectedState || selectedCity !== "All India")) {
+                handleResetToNational();
+              }
+            }}
+          >
+            {/* Floating state indicator chip when drilled down into a state */}
+            {selectedState && (
+              <div className="absolute top-3 left-3 z-10 flex items-center gap-2 bg-slate-900/90 backdrop-blur-xs text-white text-xs font-semibold px-3 py-1.5 rounded-xl shadow-md border border-slate-700/80">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>{selectedState.name}: {(stateJobCounts[selectedState.id] || 0).toLocaleString()} Jobs</span>
+                <span className="text-slate-400">|</span>
+                <button
+                  type="button"
+                  onClick={handleResetToNational}
+                  className="text-indigo-300 hover:text-white font-bold cursor-pointer"
+                  title="Zoom out back to India"
+                >
+                  Click background or here to zoom out ✕
+                </button>
+              </div>
+            )}
+
             <svg
               viewBox={INDIA_MAP_VIEWBOX}
               className="w-full h-full max-h-[500px]"
               preserveAspectRatio="xMidYMid meet"
+              onClick={(e) => {
+                // If user clicks on background or empty ocean space, reset to India
+                if (
+                  e.target === e.currentTarget ||
+                  (e.target as HTMLElement).id === "map-bg-rect" ||
+                  (e.target as HTMLElement).id === "map-camera-layer"
+                ) {
+                  if (selectedState || selectedCity !== "All India") {
+                    handleResetToNational();
+                  }
+                }
+              }}
             >
               <defs>
                 <filter id="city-badge-shadow" x="-10%" y="-20%" width="120%" height="140%">
@@ -2240,20 +2277,28 @@ export function TalentPulseDashboard({
                   <stop offset="0%" stopColor="#4F46E5" />
                   <stop offset="100%" stopColor="#3730A3" />
                 </linearGradient>
-                <pattern id="india-dot-grid" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
-                  <circle cx="2" cy="2" r="1" fill="#E2E8F0" />
-                </pattern>
               </defs>
 
-              {/* Background Coordinate Grid */}
-              <rect width="100%" height="100%" fill="url(#india-dot-grid)" />
+              {/* Background click catcher */}
+              <rect
+                id="map-bg-rect"
+                width="100%"
+                height="100%"
+                fill="transparent"
+                className="cursor-pointer"
+                onClick={() => {
+                  if (selectedState || selectedCity !== "All India") {
+                    handleResetToNational();
+                  }
+                }}
+              />
 
-              {/* Fixed Compass Rose HUD */}
-              <g transform="translate(560, 45)" opacity="0.85" pointerEvents="none">
-                <circle cx="0" cy="0" r="14" fill="#FFFFFF" stroke="#94A3B8" strokeWidth="1.2" />
-                <path d="M0,-11 L3,-2 L0,0 L-3,-2 Z" fill="#EF4444" />
-                <path d="M0,11 L3,2 L0,0 L-3,2 Z" fill="#64748B" />
-                <text x="0" y="-14" textAnchor="middle" fontSize="9" fontWeight="900" fill="#0F172A">N</text>
+              {/* Minimal Compass Rose HUD */}
+              <g transform="translate(565, 38)" opacity="0.8" pointerEvents="none">
+                <circle cx="0" cy="0" r="13" fill="#FFFFFF" stroke="#CBD5E1" strokeWidth="1.2" />
+                <path d="M0,-9 L2.5,-2 L0,0 L-2.5,-2 Z" fill="#6366F1" />
+                <path d="M0,9 L2.5,2 L0,0 L-2.5,2 Z" fill="#94A3B8" />
+                <text x="0" y="-11" textAnchor="middle" fontSize="8" fontWeight="800" fill="#475569">N</text>
               </g>
 
               {/* Camera Zoom Layer - smoothly translates and scales to focused state bounding box */}
@@ -2266,9 +2311,9 @@ export function TalentPulseDashboard({
                 }}
               >
                 {/* Water Body Annotations */}
-                <text x="70" y="520" fill="#64748B" fontSize="11" fontWeight="800" letterSpacing="3" opacity={selectedState ? 0.3 : 0.8}>ARABIAN SEA</text>
-                <text x="400" y="530" fill="#64748B" fontSize="11" fontWeight="800" letterSpacing="3" opacity={selectedState ? 0.3 : 0.8}>BAY OF BENGAL</text>
-                <text x="210" y="682" fill="#64748B" fontSize="10.5" fontWeight="800" letterSpacing="3" opacity={selectedState ? 0.3 : 0.75}>INDIAN OCEAN</text>
+                <text x="70" y="520" fill="#94A3B8" fontSize="10" fontWeight="700" letterSpacing="4" opacity={selectedState ? 0.25 : 0.6}>ARABIAN SEA</text>
+                <text x="400" y="530" fill="#94A3B8" fontSize="10" fontWeight="700" letterSpacing="4" opacity={selectedState ? 0.25 : 0.6}>BAY OF BENGAL</text>
+                <text x="210" y="682" fill="#94A3B8" fontSize="9.5" fontWeight="700" letterSpacing="4" opacity={selectedState ? 0.25 : 0.6}>INDIAN OCEAN</text>
 
                 {/* Authentic India State Vector Contours */}
                 <g id="india-states">
@@ -2277,13 +2322,10 @@ export function TalentPulseDashboard({
                     const isHovered = hoveredStateId === state.id;
                     const stateJobCount = stateJobCounts[state.id] || 0;
 
-                    // When a state is selected:
-                    // Selected state: opacity 1, fill #EEF2FF, stroke #4F46E5, strokeWidth 2.2
-                    // Other states: dim to 20% opacity (opacity: 0.2)
                     const opacity = selectedState
                       ? isSelectedState
                         ? 1
-                        : 0.2
+                        : 0.22
                       : 1;
 
                     const fill = isSelectedState
@@ -2296,16 +2338,16 @@ export function TalentPulseDashboard({
                       ? "#4F46E5"
                       : isHovered
                       ? "#6366F1"
-                      : "#94A3B8";
+                      : "#CBD5E1";
 
-                    const strokeWidth = isSelectedState ? "2.2" : isHovered ? "1.8" : "1";
+                    const strokeWidth = isSelectedState ? "2.2" : isHovered ? "1.6" : "1";
 
                     return (
                       <path
                         key={state.id}
                         id={`state-${state.id}`}
                         d={state.path}
-                        className="cursor-pointer transition-all duration-200"
+                        className={stateJobCount > 0 ? "cursor-pointer transition-all duration-200" : "transition-all duration-200"}
                         fill={fill}
                         stroke={stroke}
                         strokeWidth={strokeWidth}
@@ -2313,14 +2355,23 @@ export function TalentPulseDashboard({
                         style={{
                           transition: "opacity 350ms ease, fill 200ms ease, stroke 200ms ease",
                         }}
-                        onClick={() => handleStateClick(state)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (stateJobCount > 0) {
+                            handleStateClick(state);
+                          } else if (selectedState) {
+                            handleResetToNational();
+                          }
+                        }}
                         onMouseEnter={() => setHoveredStateId(state.id)}
                         onMouseLeave={() => setHoveredStateId(null)}
                       >
                         <title>
-                          {isSelectedState
-                            ? `${state.name} (${stateJobCount} Jobs)`
-                            : `Click to view all ${state.name} locations (${stateJobCount} Jobs)`}
+                          {stateJobCount > 0
+                            ? (isSelectedState
+                                ? `${state.name} (${stateJobCount.toLocaleString()} Jobs) • Click to zoom back out`
+                                : `${state.name} (${stateJobCount.toLocaleString()} Jobs) • Click to view openings`)
+                            : `${state.name} (No active openings)`}
                         </title>
                       </path>
                     );
@@ -2345,7 +2396,7 @@ export function TalentPulseDashboard({
                   </g>
                 )}
 
-                {/* CONCEPT 2: Interactive City Hub Clusters & Proportional Density Bubbles */}
+                {/* Interactive City Hub Clusters & Proportional Density Bubbles */}
                 <g id="city-nodes">
                   {displayedCityNodes.map((city) => {
                     const isSelected = selectedCity.toLowerCase() === city.name.toLowerCase();
@@ -2354,30 +2405,21 @@ export function TalentPulseDashboard({
                     const formatted = count >= 1000 ? `${(count / 1000).toFixed(1)}k` : count;
 
                     // Proportional Density Bubble Radius Scaling
-                    // Mathematical square-root scale tuned for high-contrast visibility:
-                    // count 0 -> 4.5px
-                    // count 1-10 -> 5.5px - 7px
-                    // count 50 -> 8.5px
-                    // count 250 -> 12px
-                    // count 1000+ -> 19-22px
-                    const bubbleRadius = count > 0 ? Math.max(5, Math.min(22, 5 + Math.sqrt(count) * 0.45)) : 4.5;
-                    const coreRadius = Math.max(2.5, Math.min(6, bubbleRadius * 0.35));
+                    const bubbleRadius = count > 0 ? Math.max(5, Math.min(20, 5 + Math.sqrt(count) * 0.42)) : 4.5;
+                    const coreRadius = Math.max(2.5, Math.min(5.5, bubbleRadius * 0.35));
 
-                    // Label Display Logic:
-                    // Top 10, count >= 25, in state drill-down, or selected show badge; others show tooltip on hover
                     const isTop10 = top10CityNamesSet.has(city.name.toLowerCase());
                     const showBadge =
                       isSelected ||
                       Boolean(selectedState) ||
                       isTop10 ||
-                      count >= 25 ||
+                      count >= 20 ||
                       isHovered;
 
                     const labelText = isSelected
                       ? `★ ${city.name} (${formatted})`
                       : `${city.name} (${formatted})`;
 
-                    // Counter-scale badges when camera zooms in so labels never collide
                     const counterScale = cameraTransform.scale > 1
                       ? Math.min(1, (1 / cameraTransform.scale) * 1.45)
                       : 1;
@@ -2411,7 +2453,7 @@ export function TalentPulseDashboard({
                                 ? "rgba(79, 70, 229, 0.28)"
                                 : isHovered
                                 ? "rgba(99, 102, 241, 0.32)"
-                                : "rgba(79, 70, 229, 0.18)"
+                                : "rgba(79, 70, 229, 0.16)"
                             }
                             stroke={isSelected ? "#4F46E5" : isHovered ? "#4338CA" : "#6366F1"}
                             strokeWidth={isSelected ? 2 : isHovered ? 1.6 : 1.2}
@@ -2453,79 +2495,77 @@ export function TalentPulseDashboard({
                                 fill="#818CF8"
                                 opacity="0.25"
                               />
-                              <text
-                                x={city.x}
-                                y={city.y + 3.5}
-                                textAnchor="middle"
-                                fontSize="9"
-                                fill="#FBBF24"
-                                fontWeight="900"
-                                className="pointer-events-none"
-                              >
-                                ★
-                              </text>
                             </>
                           )}
 
                           {/* 4. Badges and Tooltips */}
                           {isSelected ? (
                             /* Dark Sleek Active Pill Label */
-                            <>
-                              <rect
-                                x={city.lx}
-                                y={city.ly}
-                                width={city.lw}
-                                height="24"
-                                rx="6"
-                                fill="#0F172A"
-                                stroke="#312E81"
-                                strokeWidth="1.5"
-                                filter="url(#city-badge-shadow)"
-                                className="transition-all duration-200 group-hover:scale-105 cursor-pointer"
-                                style={{ transformOrigin: `${city.lx + city.lw / 2}px ${city.ly + 12}px` }}
-                              />
-                              <text
-                                x={city.lx + city.lw / 2}
-                                y={city.ly + 16}
-                                textAnchor="middle"
-                                fill="#FFFFFF"
-                                fontSize="11.5"
-                                fontWeight="900"
-                                letterSpacing="-0.2px"
-                                className="select-none cursor-pointer"
-                              >
-                                {labelText}
-                              </text>
-                            </>
-                          ) : showBadge ? (
-                            /* Rectangular Floating Count Badge */
-                            <>
+                            <g className="cursor-pointer">
                               <rect
                                 x={city.lx}
                                 y={city.ly}
                                 width={city.lw}
                                 height="22"
-                                rx="6"
-                                fill="#FFFFFF"
-                                stroke={isHovered ? "#4F46E5" : "#64748B"}
-                                strokeWidth={isHovered ? "1.6" : "1.2"}
+                                rx="11"
+                                fill="#0F172A"
+                                stroke="#4F46E5"
+                                strokeWidth="1.6"
                                 filter="url(#city-badge-shadow)"
-                                className="transition-all duration-200 group-hover:stroke-indigo-600 group-hover:scale-105 cursor-pointer"
-                                style={{ transformOrigin: `${city.lx + city.lw / 2}px ${city.ly + 11}px` }}
+                                className="transition-all duration-200"
+                              />
+                              <circle
+                                cx={city.lx + 10}
+                                cy={city.ly + 11}
+                                r="3"
+                                fill="#10B981"
+                                className="animate-pulse"
                               />
                               <text
-                                x={city.lx + city.lw / 2}
+                                x={city.lx + 18}
                                 y={city.ly + 15}
-                                textAnchor="middle"
-                                fill="#0F172A"
-                                fontSize="11"
+                                fill="#FFFFFF"
+                                fontSize="10"
+                                fontWeight="900"
+                                letterSpacing="-0.2px"
+                                className="select-none"
+                              >
+                                ★ {city.name} ({formatted})
+                              </text>
+                            </g>
+                          ) : showBadge ? (
+                            /* Modern Sleek Pill Badge */
+                            <g className="cursor-pointer group-hover:scale-105 transition-all">
+                              <rect
+                                x={city.lx}
+                                y={city.ly}
+                                width={city.lw}
+                                height="20"
+                                rx="10"
+                                fill="#FFFFFF"
+                                stroke={isHovered ? "#4F46E5" : "#CBD5E1"}
+                                strokeWidth={isHovered ? "1.6" : "1"}
+                                filter="url(#city-badge-shadow)"
+                                className="transition-all duration-200"
+                              />
+                              <circle
+                                cx={city.lx + 9}
+                                cy={city.ly + 10}
+                                r="2.5"
+                                fill={isHovered ? "#4F46E5" : "#6366F1"}
+                              />
+                              <text
+                                x={city.lx + 16}
+                                y={city.ly + 14}
+                                fill="#1E293B"
+                                fontSize="9.5"
                                 fontWeight="800"
                                 letterSpacing="-0.2px"
-                                className="select-none cursor-pointer transition-colors group-hover:fill-indigo-600"
+                                className="select-none transition-colors"
                               >
-                                {labelText}
+                                {city.name} ({formatted})
                               </text>
-                            </>
+                            </g>
                           ) : (
                             /* Hover Tooltip Card for Bubbles when badge is hidden */
                             isHovered && (
@@ -2534,11 +2574,11 @@ export function TalentPulseDashboard({
                                 className="pointer-events-none transition-all duration-150"
                               >
                                 <rect
-                                  x="-60"
-                                  y="-14"
-                                  width="120"
-                                  height="28"
-                                  rx="6"
+                                  x="-55"
+                                  y="-12"
+                                  width="110"
+                                  height="24"
+                                  rx="12"
                                   fill="#0F172A"
                                   stroke="#4F46E5"
                                   strokeWidth="1.2"
@@ -2549,7 +2589,7 @@ export function TalentPulseDashboard({
                                   y="4"
                                   textAnchor="middle"
                                   fill="#FFFFFF"
-                                  fontSize="10.5"
+                                  fontSize="10"
                                   fontWeight="800"
                                 >
                                   {city.name} ({formatted} Jobs)
@@ -2564,45 +2604,6 @@ export function TalentPulseDashboard({
                 </g>
               </g>
             </svg>
-
-            {/* Bottom Map Legend with Proportional Density Scale */}
-            <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2.5 px-2 border-t border-slate-200 text-xs text-slate-700 font-semibold">
-              {/* Density Bubble Scale Guide */}
-              <div className="flex items-center gap-3 flex-wrap">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Scale:</span>
-                <span className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                  <span className="w-2 h-2 rounded-full bg-indigo-600 inline-block"></span>
-                  &lt;10
-                </span>
-                <span className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                  <span className="w-3.5 h-3.5 rounded-full bg-indigo-100 border border-indigo-600 flex items-center justify-center">
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
-                  </span>
-                  10–50
-                </span>
-                <span className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                  <span className="w-5 h-5 rounded-full bg-indigo-100 border border-indigo-600 flex items-center justify-center">
-                    <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
-                  </span>
-                  50+ Metros
-                </span>
-                <span className="text-slate-300">|</span>
-                <span className="text-[11px] text-indigo-700 font-bold">
-                  Bubble Size = Hiring Volume
-                </span>
-              </div>
-
-              {/* Counts & Coverage */}
-              <div className="flex items-center gap-2 text-[11px] text-slate-600 font-medium">
-                <span>
-                  Showing <strong className="text-slate-900 font-bold">{displayedCityNodes.length}</strong> of {citiesWithJobs.length} Active Hubs
-                </span>
-                <span>•</span>
-                <span>
-                  {selectedState ? `${selectedState.totalJobs} State Roles` : `${jobs.length} Positions`}
-                </span>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -2778,18 +2779,6 @@ export function TalentPulseDashboard({
               </span>
             </div>
           </div>
-
-          {/* Export CSV Button at the end */}
-          <button
-            onClick={handleExportCityCsv}
-            id="export-city-csv-btn"
-            className="w-full py-3 px-4 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 hover:border-slate-400 text-slate-800 hover:text-slate-950 font-bold text-xs shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <Download className="w-4 h-4 text-slate-600" />
-            <span>
-              Export {activeAnalyticsTitle.toLowerCase().replace(/\s+/g, "_")}_jobs.csv
-            </span>
-          </button>
         </div>
       </div>
 
@@ -2797,90 +2786,294 @@ export function TalentPulseDashboard({
       {/* BOTTOM SECTION: [CITY] LIVE OPENINGS TABLE */}
       {/* ==================================================================== */}
       <div id="directory" className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-4 hover:border-slate-300 transition-colors">
-        {/* Table Title Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2">
-          <div className="flex items-baseline gap-2">
-            <h3 className="text-base font-black text-slate-900" id="table-title">
-              {selectedCity !== "All India"
-                ? `${selectedCity} Live Openings`
-                : selectedState
-                ? `${selectedState.name} Live Openings`
-                : "All India Live Openings"}
-            </h3>
-            <span className="text-xs font-semibold text-slate-600" id="table-count-label">
-              (Showing {activeTableTotalCount > 0 ? `${startIndex + 1}–${endIndex}` : "0"} of{" "}
-              {activeTableTotalCount.toLocaleString()} matching records • Page {safeCurrentPage} of {totalPages})
-            </span>
+        
+        {/* Section Header with Quick Sort Tabs, View Toggle, and Export */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-lg font-black text-slate-900 tracking-tight" id="table-title">
+                {selectedCity !== "All India"
+                  ? `${selectedCity} Live Openings`
+                  : selectedState
+                  ? `${selectedState.name} Live Openings`
+                  : "All India Live Openings"}
+              </h3>
+              <span className="px-2.5 py-0.5 text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full" id="table-count-label">
+                {activeTableTotalCount.toLocaleString()} Verified Openings
+              </span>
+              {isSearchingServer && (
+                <span className="flex items-center gap-1 text-[11px] font-bold text-indigo-600">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>Filtering...</span>
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Live catalog streamed directly from Supabase with instant search, multi-factor filters, and canonical listings.
+            </p>
           </div>
 
-          {selectedSkillFilter && (
-            <div className="flex items-center gap-1.5 text-xs bg-indigo-50 text-indigo-900 px-3 py-1 rounded-lg border border-indigo-200 font-bold shadow-2xs">
-              <span>Filter: <strong>{selectedSkillFilter}</strong></span>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* View Mode Toggle */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
               <button
-                onClick={() => setSelectedSkillFilter(null)}
-                className="hover:text-indigo-950 ml-1"
+                type="button"
+                onClick={() => setTableViewMode("table")}
+                className={`p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  tableViewMode === "table"
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-500 hover:text-slate-900"
+                }`}
+                title="Table view"
               >
-                <X className="w-3 h-3" />
+                <List className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setTableViewMode("grid")}
+                className={`p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  tableViewMode === "grid"
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-500 hover:text-slate-900"
+                }`}
+                title="Card grid view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Timeframe Selector & Export CSV */}
+            <div className="flex items-center bg-slate-50 p-1 rounded-xl border border-slate-300 shadow-2xs gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-slate-500 ml-1.5" />
+              <select
+                value={exportTimeframe}
+                onChange={(e) => setExportTimeframe(e.target.value)}
+                className="bg-transparent text-xs font-bold text-slate-700 py-1 px-1 focus:outline-none cursor-pointer"
+                title="Select timeframe to extract & export"
+              >
+                <option value="all">All Time</option>
+                <option value="1h">Last 1 Hour</option>
+                <option value="2h">Last 2 Hours</option>
+                <option value="24h">Last 1 Day (24h)</option>
+                <option value="7d">Last 7 Days</option>
+              </select>
+              <button
+                type="button"
+                id="export-live-csv-btn"
+                onClick={() => handleExportCityCsv(exportTimeframe)}
+                disabled={isExporting}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-bold text-xs rounded-lg shadow-xs transition-colors cursor-pointer"
+                title="Download CSV for selected timeframe"
+              >
+                <Download className={`w-3.5 h-3.5 text-white ${isExporting ? "animate-bounce" : ""}`} />
+                <span>{isExporting ? "Exporting..." : "Export CSV"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Integrated Filter Bar */}
+        <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-200 space-y-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5">
+            
+            {/* Search Input */}
+            <div className="lg:col-span-5 relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search by role title, company, skills, or city..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 bg-white text-xs rounded-lg border border-slate-200 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition-colors shadow-2xs"
+              />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => setSearchInput("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* City Dropdown */}
+            <div className="lg:col-span-3">
+              <select
+                value={selectedCity}
+                onChange={(e) => {
+                  handleCitySelect(e.target.value);
+                }}
+                className="w-full px-3 py-2 bg-white text-xs rounded-lg border border-slate-200 text-slate-800 font-medium focus:outline-none focus:border-indigo-500 shadow-2xs cursor-pointer"
+              >
+                <option value="All India">📍 All Locations (Pan-India)</option>
+                {citiesWithJobs.map((c) => (
+                  <option key={c.name} value={c.name}>
+                    📍 {c.name} ({cityCounts[c.name] || 0} Openings)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Experience Dropdown */}
+            <div className="lg:col-span-2">
+              <select
+                value={selectedExperienceFilter}
+                onChange={(e) => setSelectedExperienceFilter(e.target.value)}
+                className="w-full px-2.5 py-2 bg-white text-xs rounded-lg border border-slate-200 text-slate-800 font-medium focus:outline-none focus:border-indigo-500 shadow-2xs cursor-pointer"
+              >
+                <option value="all">🎓 All Experience</option>
+                <option value="freshers">🌱 Freshers (0–1y)</option>
+                <option value="early">⚡ Early Career (1–3y)</option>
+                <option value="mid">🚀 Mid-Level (3–5y)</option>
+                <option value="senior">👑 Senior / Lead (5+y)</option>
+              </select>
+            </div>
+
+            {/* Source Dropdown */}
+            <div className="lg:col-span-2">
+              <select
+                value={selectedSourceFilter}
+                onChange={(e) => setSelectedSourceFilter(e.target.value)}
+                className="w-full px-2.5 py-2 bg-white text-xs rounded-lg border border-slate-200 text-slate-800 font-medium focus:outline-none focus:border-indigo-500 shadow-2xs cursor-pointer"
+              >
+                <option value="all">🌐 All Sources</option>
+                <option value="linkedin">LinkedIn</option>
+                <option value="naukri">Naukri</option>
+                <option value="indeed">Indeed</option>
+              </select>
+            </div>
+
+          </div>
+
+          {/* Active Filter Chips */}
+          {(searchQuery || selectedCity !== "All India" || selectedState || selectedSkillFilter || selectedExperienceFilter !== "all" || selectedSourceFilter !== "all") && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-200/80 text-xs">
+              <span className="text-slate-400 font-semibold text-[11px]">Active:</span>
+              {selectedState && (
+                <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-medium flex items-center gap-1">
+                  State: {selectedState.name}
+                  <button type="button" onClick={handleResetToNational} className="hover:text-indigo-950 cursor-pointer" title="Clear state filter">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              {searchQuery && (
+                <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-medium flex items-center gap-1">
+                  Query: &quot;{searchQuery}&quot;
+                  <button type="button" onClick={() => setSearchInput("")} className="hover:text-indigo-950 cursor-pointer">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              {selectedCity !== "All India" && (
+                <span className="px-2 py-0.5 rounded-md bg-sky-50 text-sky-700 border border-sky-200 text-[11px] font-medium flex items-center gap-1">
+                  City: {selectedCity}
+                  <button type="button" onClick={() => handleCitySelect("All India")} className="hover:text-sky-950 cursor-pointer">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              {selectedExperienceFilter !== "all" && (
+                <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-medium flex items-center gap-1">
+                  Exp: {selectedExperienceFilter}
+                  <button type="button" onClick={() => setSelectedExperienceFilter("all")} className="hover:text-emerald-950 cursor-pointer">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              {selectedSourceFilter !== "all" && (
+                <span className="px-2 py-0.5 rounded-md bg-violet-50 text-violet-700 border border-violet-200 text-[11px] font-medium flex items-center gap-1">
+                  Source: {selectedSourceFilter}
+                  <button type="button" onClick={() => setSelectedSourceFilter("all")} className="hover:text-violet-950 cursor-pointer">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              {selectedSkillFilter && (
+                <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-medium flex items-center gap-1">
+                  Skill: {selectedSkillFilter}
+                  <button type="button" onClick={() => setSelectedSkillFilter(null)} className="hover:text-indigo-950 cursor-pointer">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchInput("");
+                  handleResetToNational();
+                  setSelectedSkillFilter(null);
+                  setSelectedExperienceFilter("all");
+                  setSelectedSourceFilter("all");
+                }}
+                className="text-xs text-rose-600 hover:underline font-bold cursor-pointer ml-auto"
+              >
+                Reset all filters
               </button>
             </div>
           )}
         </div>
 
-        {/* Data Table */}
-        <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-2xs">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-100/90 text-slate-700 font-bold uppercase tracking-wider text-xs">
-                <th className="py-3.5 px-4">Job Title</th>
-                <th className="py-3.5 px-4">Company</th>
-                <th className="py-3.5 px-4">Location</th>
-                <th className="py-3.5 px-4">Experience</th>
-                <th className="py-3.5 px-4">Source</th>
-                <th className="py-3.5 px-4 text-right">Canonical Link</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {activeTableTotalCount === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-12 px-4 text-center">
-                    <div className="max-w-md mx-auto space-y-2">
-                      <Search className="w-8 h-8 text-slate-400 mx-auto mb-1" />
-                      <p className="text-sm font-bold text-slate-800">
-                        No matching jobs found
-                        {searchQuery ? ` for "${searchQuery}"` : ""}
-                        {selectedCity !== "All India" ? ` in ${selectedCity}` : ""}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Try searching for another role, skill, or location, or switch to Pan-India view.
-                      </p>
-                      <div className="pt-2 flex items-center justify-center gap-2">
-                        {searchQuery && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSearchInput("");
-                              setSearchQuery("");
-                            }}
-                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors cursor-pointer"
-                          >
-                            Clear Search
-                          </button>
-                        )}
-                        {selectedCity !== "All India" && (
-                          <button
-                            type="button"
-                            onClick={() => setSelectedCity("All India")}
-                            className="px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 transition-colors cursor-pointer"
-                          >
-                            View All India Jobs
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </td>
+        {/* Loading Spinner */}
+        {isSearchingServer && activeTableJobs.length === 0 ? (
+          <div className="p-14 flex flex-col items-center justify-center bg-white rounded-xl border border-slate-200">
+            <Loader2 className="w-7 h-7 text-indigo-600 animate-spin" />
+            <p className="text-xs font-bold text-slate-600 mt-2.5">Filtering live opportunities...</p>
+          </div>
+        ) : activeTableTotalCount === 0 ? (
+          <div className="py-12 px-4 text-center bg-white rounded-xl border border-slate-200">
+            <div className="max-w-md mx-auto space-y-2">
+              <Search className="w-8 h-8 text-slate-400 mx-auto mb-1" />
+              <p className="text-sm font-bold text-slate-800">
+                No matching jobs found
+                {searchQuery ? ` for "${searchQuery}"` : ""}
+                {selectedCity !== "All India" ? ` in ${selectedCity}` : ""}
+              </p>
+              <p className="text-xs text-slate-500">
+                Try searching for another role, skill, or location, or switch to Pan-India view.
+              </p>
+              <div className="pt-2 flex items-center justify-center gap-2">
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchInput("");
+                    }}
+                    className="px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors cursor-pointer"
+                  >
+                    Clear Search
+                  </button>
+                )}
+                {selectedCity !== "All India" && (
+                  <button
+                    type="button"
+                    onClick={() => handleCitySelect("All India")}
+                    className="px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300 transition-colors cursor-pointer"
+                  >
+                    View All India Jobs
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : tableViewMode === "table" ? (
+          /* TABLE VIEW */
+          <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-2xs">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-100/90 text-slate-700 font-bold uppercase tracking-wider text-xs">
+                  <th className="py-3 px-4">Job Title</th>
+                  <th className="py-3 px-4">Company</th>
+                  <th className="py-3 px-4">Location</th>
+                  <th className="py-3 px-4">Experience</th>
+                  <th className="py-3 px-4">Skills</th>
+                  <th className="py-3 px-4">Source</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
-              ) : (
-                currentPaginatedJobs.map((job) => {
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {currentPaginatedJobs.map((job) => {
                   const src = (job.source || "LinkedIn").toLowerCase();
                   return (
                     <tr
@@ -2889,102 +3082,224 @@ export function TalentPulseDashboard({
                       onClick={() => handleSelectJob(job)}
                     >
                       {/* Job Title */}
-                      <td className="py-4 px-4 font-bold text-slate-900 text-sm">
-                        <div className="flex items-center gap-2">
-                          <span className="group-hover:text-indigo-700 transition-colors">
-                            {job.title}
+                      <td className="py-3.5 px-4 font-bold text-slate-900 text-xs max-w-xs truncate group-hover:text-indigo-600">
+                        {job.title}
+                      </td>
+
+                      {/* Company */}
+                      <td className="py-3.5 px-4 font-semibold text-slate-800 text-xs whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="truncate max-w-[140px]">{job.company || "Not Specified"}</span>
+                        </div>
+                      </td>
+
+                      {/* Location */}
+                      <td className="py-3.5 px-4 text-slate-600 font-medium text-xs whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span>
+                            {selectedCity !== "All India"
+                              ? (job.city && job.city.toLowerCase().includes("hybrid") ? `Hybrid - ${selectedCity}` : selectedCity)
+                              : (job.city && job.city !== "Not Specified"
+                                  ? `${job.city}${job.state && job.state !== "Not Specified" ? `, ${job.state}` : ""}`
+                                  : job.normalized_location || "India")}
                           </span>
                         </div>
                       </td>
 
-                      {/* Company */}
-                      <td className="py-4 px-4 font-semibold text-slate-800 text-xs">
-                        {job.company || "Not Specified"}
-                      </td>
-
-                      {/* Location */}
-                      <td className="py-4 px-4 text-slate-600 font-medium text-xs">
-                        {selectedCity !== "All India"
-                          ? (job.city && job.city.toLowerCase().includes("hybrid") ? `Hybrid - ${selectedCity}` : selectedCity)
-                          : (job.city && job.city !== "Not Specified"
-                              ? `${job.city}${job.state && job.state !== "Not Specified" ? `, ${job.state}` : ""}`
-                              : job.normalized_location || "India")}
-                      </td>
-
                       {/* Experience */}
-                      <td className="py-4 px-4">
-                        <span className="text-slate-800 font-semibold text-xs bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 inline-block">
-                          {job.exp_display || `${job.min_experience_years || 0} - ${job.max_experience_years || 5} Years`}
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <span className="text-slate-800 font-semibold text-[11px] bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 inline-block">
+                          {job.exp_display || (job.min_experience_years && job.min_experience_years !== "Not Specified" ? `${job.min_experience_years}–${job.max_experience_years || job.min_experience_years}y` : "Unspecified")}
                         </span>
                       </td>
 
+                      {/* Skills */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex flex-wrap gap-1 max-w-xs">
+                          {String(job.skills || "")
+                            .split(/[,|;]/)
+                            .filter((s) => s.trim().length > 1)
+                            .slice(0, 3)
+                            .map((s, idx) => (
+                              <span
+                                key={idx}
+                                className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 text-[10px] border border-slate-200 font-medium"
+                              >
+                                {s.trim()}
+                              </span>
+                            ))}
+                        </div>
+                      </td>
+
                       {/* Source Badge */}
-                      <td className="py-4 px-4">
+                      <td className="py-3.5 px-4 whitespace-nowrap">
                         {src.includes("linkedin") ? (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#EBF5FF] text-[#0A66C2] border border-[#B3D7FF]">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#EBF5FF] text-[#0A66C2] border border-[#B3D7FF]">
                             LinkedIn
                           </span>
                         ) : src.includes("naukri") ? (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A]">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A]">
                             Naukri
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-900 border border-blue-200">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-900 border border-blue-200">
                             Indeed
                           </span>
                         )}
                       </td>
 
-                      {/* Canonical Link */}
-                      <td className="py-4 px-4 text-right">
-                        {job.link && job.link !== "Not Specified" ? (
-                          <a
-                            href={job.link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1 text-indigo-700 hover:text-indigo-950 font-bold text-xs transition-colors hover:underline"
+                      {/* Actions */}
+                      <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectJob(job);
+                            }}
+                            className="px-2 py-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
                           >
-                            <span>View Listing</span>
-                            <ArrowUpRight className="w-3.5 h-3.5" />
-                          </a>
-                        ) : (
-                          <span className="text-slate-400 font-medium text-xs">View Listing ↗</span>
-                        )}
+                            Inspect →
+                          </button>
+                          {job.link && job.link !== "Not Specified" && (
+                            <a
+                              href={job.link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="p-1 text-slate-400 hover:text-slate-800 rounded-lg transition-colors"
+                              title="Open original listing"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          /* CARD GRID VIEW */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {currentPaginatedJobs.map((job) => {
+              const src = (job.source || "LinkedIn").toLowerCase();
+              return (
+                <div
+                  key={job.job_id}
+                  onClick={() => handleSelectJob(job)}
+                  className="bg-white p-4 rounded-xl border border-slate-200 hover:border-indigo-400 hover:shadow-sm transition-all cursor-pointer flex flex-col justify-between space-y-3 group"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <h4 className="font-bold text-xs text-slate-900 group-hover:text-indigo-600 line-clamp-2">
+                        {job.title}
+                      </h4>
+                      {src.includes("linkedin") ? (
+                        <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-[#EBF5FF] text-[#0A66C2] shrink-0 border border-[#B3D7FF]">
+                          LinkedIn
+                        </span>
+                      ) : src.includes("naukri") ? (
+                        <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-[#FEF3C7] text-[#92400E] shrink-0 border border-[#FDE68A]">
+                          Naukri
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-blue-100 text-blue-900 shrink-0 border border-blue-200">
+                          Indeed
+                        </span>
+                      )}
+                    </div>
 
-        {/* Page Navigation Controls (Navigates to Next / Prev Page instead of expanding on same page) */}
-        {displayJobs.length > 0 && (
-          <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4" id="table-pagination-bar">
-            {/* Results count text */}
-            <div className="text-xs font-semibold text-slate-600">
-              Showing <span className="font-bold text-slate-900">{startIndex + 1}</span> to{" "}
-              <span className="font-bold text-slate-900">{endIndex}</span> of{" "}
-              <span className="font-bold text-slate-900">{displayJobs.length.toLocaleString()}</span> jobs
+                    <p className="text-xs text-slate-600 font-medium mt-1.5 flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span className="truncate">{job.company || "Not Specified"}</span>
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
+                      <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                      <span className="truncate">{job.city || "India"}</span>
+                    </p>
+                  </div>
+
+                  <div className="space-y-2 pt-2 border-t border-slate-100 text-xs">
+                    <div className="flex flex-wrap gap-1">
+                      {String(job.skills || "")
+                        .split(/[,|;]/)
+                        .filter((s) => s.trim().length > 1)
+                        .slice(0, 3)
+                        .map((s, idx) => (
+                          <span
+                            key={idx}
+                            className="px-1.5 py-0.2 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200"
+                          >
+                            {s.trim()}
+                          </span>
+                        ))}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 text-[11px]">
+                      <span className="font-semibold text-slate-600">
+                        {job.exp_display || (job.min_experience_years ? `${job.min_experience_years}–${job.max_experience_years || job.min_experience_years}y` : "Unspecified")}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSelectJob(job);
+                        }}
+                        className="font-bold text-indigo-600 hover:underline"
+                      >
+                        Inspect →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Page Navigation Controls across all 11,241 jobs */}
+        {activeTableTotalCount > 0 && (
+          <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs" id="table-pagination-bar">
+            {/* Results count text & page size selector */}
+            <div className="flex items-center gap-3">
+              <span className="font-semibold text-slate-600">
+                Showing <strong className="text-slate-900">{startIndex + 1}</strong> to{" "}
+                <strong className="text-slate-900">{endIndex}</strong> of{" "}
+                <strong className="text-slate-900">{activeTableTotalCount.toLocaleString()}</strong> jobs
+              </span>
+
+              <select
+                value={tablePageSize}
+                onChange={(e) => setTablePageSize(Number(e.target.value))}
+                className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 cursor-pointer"
+              >
+                <option value={10}>10 / page</option>
+                <option value={25}>25 / page</option>
+                <option value={50}>50 / page</option>
+              </select>
             </div>
 
             {/* Pagination Buttons */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               {/* Previous Page Button */}
               <button
+                type="button"
                 onClick={() => {
                   setCurrentPage((prev) => Math.max(1, prev - 1));
                   document.getElementById("directory")?.scrollIntoView({ behavior: "smooth" });
                 }}
                 disabled={safeCurrentPage <= 1}
                 id="prev-page-btn"
-                className="px-3.5 py-1.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
+                className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-bold text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
                 title="Previous Page"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
-                <span>Previous</span>
+                <span>Prev</span>
               </button>
 
               {/* Numbered Page Buttons */}
@@ -3005,11 +3320,12 @@ export function TalentPulseDashboard({
                   return (
                     <button
                       key={pageNum}
+                      type="button"
                       onClick={() => {
                         setCurrentPage(pageNum);
                         document.getElementById("directory")?.scrollIntoView({ behavior: "smooth" });
                       }}
-                      className={`min-w-[32px] h-8 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      className={`min-w-[30px] h-7 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                         isActive
                           ? "bg-indigo-600 text-white shadow-xs"
                           : "bg-white text-slate-700 hover:text-slate-950 hover:bg-slate-100 border border-slate-200"
@@ -3024,11 +3340,12 @@ export function TalentPulseDashboard({
                   <>
                     <span className="text-slate-400 px-1 text-xs select-none">...</span>
                     <button
+                      type="button"
                       onClick={() => {
                         setCurrentPage(totalPages);
                         document.getElementById("directory")?.scrollIntoView({ behavior: "smooth" });
                       }}
-                      className="min-w-[32px] h-8 px-2 rounded-xl text-xs font-bold bg-white text-slate-700 hover:text-slate-950 hover:bg-slate-100 border border-slate-200 cursor-pointer"
+                      className="min-w-[30px] h-7 px-2 rounded-lg text-xs font-bold bg-white text-slate-700 hover:text-slate-950 hover:bg-slate-100 border border-slate-200 cursor-pointer"
                     >
                       {totalPages}
                     </button>
@@ -3038,16 +3355,17 @@ export function TalentPulseDashboard({
 
               {/* Next Page Button */}
               <button
+                type="button"
                 onClick={() => {
                   setCurrentPage((prev) => Math.min(totalPages, prev + 1));
                   document.getElementById("directory")?.scrollIntoView({ behavior: "smooth" });
                 }}
                 disabled={safeCurrentPage >= totalPages}
                 id="next-page-btn"
-                className="px-3.5 py-1.5 rounded-xl border border-indigo-600 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:border-slate-300 disabled:text-slate-500 cursor-pointer"
+                className="px-3 py-1.5 rounded-lg border border-indigo-600 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:border-slate-300 disabled:text-slate-500 cursor-pointer"
                 title="Next Page"
               >
-                <span>Next Page</span>
+                <span>Next</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>

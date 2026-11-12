@@ -335,32 +335,52 @@ function renderAdminView({
 
           {/* Recent Runs Table */}
           <div className="pt-4 border-t border-slate-200 space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              Recent Ingestion Runs
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                Recent Ingestion Runs
+              </h3>
+              <Link
+                href="/dashboard/extraction-history"
+                className="text-xs font-bold text-indigo-600 hover:underline flex items-center gap-1"
+              >
+                <span>View Full Extraction Audit History →</span>
+              </Link>
+            </div>
             <div className="space-y-2">
-              {runs.map((run) => (
-                <div
-                  key={run.id}
-                  className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="px-2.5 py-0.5 rounded font-bold uppercase text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      {run.status}
-                    </span>
-                    <strong className="text-slate-900 font-bold">{run.source}</strong>
-                    <span className="text-slate-500 font-medium">Past {run.max_age_hours} hrs</span>
-                  </div>
-                  <div className="text-slate-600 flex items-center gap-4 font-medium">
-                    <span className="text-slate-800 font-semibold">
-                      {run.result_summary || "Awaiting execution"}
-                    </span>
-                    <time className="text-slate-500">
-                      {new Date(run.created_at).toLocaleTimeString()}
-                    </time>
-                  </div>
+              {runs.length === 0 ? (
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 flex items-center justify-between">
+                  <span>No queue-dispatched jobs pending. Automated harvesters stream directly to Supabase.</span>
+                  <Link
+                    href="/dashboard/extraction-history"
+                    className="font-bold text-indigo-600 hover:underline"
+                  >
+                    View Harvest Logs →
+                  </Link>
                 </div>
-              ))}
+              ) : (
+                runs.map((run) => (
+                  <div
+                    key={run.id}
+                    className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="px-2.5 py-0.5 rounded font-bold uppercase text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        {run.status}
+                      </span>
+                      <strong className="text-slate-900 font-bold">{run.source}</strong>
+                      <span className="text-slate-500 font-medium">Past {run.max_age_hours} hrs</span>
+                    </div>
+                    <div className="text-slate-600 flex items-center gap-4 font-medium">
+                      <span className="text-slate-800 font-semibold">
+                        {run.result_summary || "Awaiting execution"}
+                      </span>
+                      <time className="text-slate-500">
+                        {new Date(run.created_at).toLocaleTimeString()}
+                      </time>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
