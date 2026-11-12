@@ -71,6 +71,7 @@ def parse_args():
     parser.add_argument("--max-jobs", type=int, default=None, help="Optional max jobs limit (omitted for unlimited)")
     parser.add_argument("--enable-details", dest="enable_details", action="store_true", default=True, help="Enable full detail page fetching for rich descriptions and education")
     parser.add_argument("--no-details", dest="enable_details", action="store_false", help="Disable detail page fetching for faster card-only scraping")
+    parser.add_argument("--export-local-csv", dest="export_local_csv", action="store_true", default=False, help="Also export a local CSV backup in Data/ (defaults to False for cloud-native Supabase)")
     return parser.parse_args()
 
 
@@ -167,42 +168,45 @@ def main():
         domain_name, slot_num = detect_domain_from_keywords(keywords, domain_hint=args.domain)
         extracted_batch = getattr(report, "extracted_jobs", None) or getattr(report, "new_jobs", [])
 
-        batch_file_path, batch_filename, batch_count = save_batch_extraction_csv(
-            jobs=extracted_batch,
-            domain=domain_name,
-            keywords=", ".join(keywords),
-            location=location,
-        )
-
-        rel_save_path = str(batch_file_path.relative_to(ROOT_DIR)).replace("\\", "/")
-        log(f"Current extraction batch ({batch_count} jobs from {', '.join([s.capitalize() for s in sources])}) saved to {rel_save_path}")
-
-        log("Scraping completed! Syncing to SQLite local database...")
-        unified_csv = ROOT_DIR / "Data" / "unified_jobs.csv"
-        if unified_csv.exists():
-            import_csv_to_database(unified_csv)
-
-        # Check total count in SQLite
-        import sqlite3
-        with sqlite3.connect(DB_PATH) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM jobs")
-            total_jobs = cursor.fetchone()[0]
-
-        new_count = report.new_jobs_written
-        log(f"Catalog successfully synced. Total jobs in database: {total_jobs} (+{new_count} newly added to catalog, {len(extracted_batch)} in this batch)")
-
-        # Attempt Supabase sync if credentials available
+        # 1. DIRECT SUPABASE CLOUD SYNC (In-Memory, Zero CSV Requirement)
         sb_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
         sb_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        total_jobs = 0
+
         if sb_url and sb_key and not sb_key.startswith("your_"):
             try:
-                from pipeline.supabase_scrape_worker import supabase_client, sync_jobs
-                client = supabase_client()
-                synced = sync_jobs(client)
-                log(f"Supabase Cloud synchronized: {synced} jobs updated.")
+                from database import sync_records_to_supabase, get_supabase_client
+                res = sync_records_to_supabase(extracted_batch)
+                synced_count = res.get("synced", 0)
+                log(f"Supabase Cloud synchronized: {synced_count} jobs upserted directly.")
+
+                # Live count in Supabase
+                client = get_supabase_client()
+                if client:
+                    count_res = client.table("jobs").select("job_id", count="exact").limit(1).execute()
+                    total_jobs = count_res.count or 0
+                    log(f"Total live jobs in Supabase Cloud: {total_jobs:,}")
             except Exception as sb_err:
-                log(f"Supabase sync note: {sb_err}")
+                log(f"Supabase direct sync note: {sb_err}")
+
+        # 2. Optional local CSV export if explicitly requested (--export-local-csv)
+        batch_filename = f"Jobs_{domain_name}_{datetime.now().strftime('%H%M%S')}.csv"
+        batch_file_path = None
+        if getattr(args, "export_local_csv", False):
+            try:
+                batch_file_path, batch_filename, batch_count = save_batch_extraction_csv(
+                    jobs=extracted_batch,
+                    domain=domain_name,
+                    keywords=", ".join(keywords),
+                    location=location,
+                )
+                rel_save_path = str(batch_file_path.relative_to(ROOT_DIR)).replace("\\", "/")
+                log(f"Local backup CSV ({batch_count} jobs) saved to {rel_save_path}")
+            except Exception as csv_err:
+                log(f"Local CSV export note: {csv_err}")
+
+        new_count = report.new_jobs_written
+        log(f"Catalog successfully synced. Total jobs in database: {total_jobs:,} (+{new_count} newly added to catalog, {len(extracted_batch)} in this batch)")
 
         def _get_val(obj, key, default=""):
             if isinstance(obj, dict):

@@ -417,6 +417,66 @@ def sync_csv_to_supabase(target_csv=None, batch_size=100) -> dict:
     return {"synced": total_synced, "skipped": skipped, "status": "success"}
 
 
+def sync_records_to_supabase(records, batch_size=100) -> dict:
+    """
+    Directly batch upserts in-memory job records (UnifiedJob instances or dicts)
+    to Supabase Cloud without writing any intermediate CSV or file to disk.
+    """
+    client = get_supabase_client()
+    if not client:
+        print("[Supabase] Skipped: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not configured in .env")
+        return {"synced": 0, "skipped": 0, "status": "unconfigured"}
+
+    if not records:
+        return {"synced": 0, "skipped": 0, "status": "no_records"}
+
+    batch = []
+    total_synced = 0
+    skipped = 0
+
+    for item in records:
+        if hasattr(item, "as_dict"):
+            row = item.as_dict()
+        elif isinstance(item, dict):
+            row = item
+        else:
+            try:
+                row = dict(item)
+            except Exception:
+                row = {k: getattr(item, k, "") for k in dir(item) if not k.startswith("_")}
+
+        record = clean_job_record(row)
+        if not record.get("job_id"):
+            skipped += 1
+            continue
+
+        batch.append(record)
+        if len(batch) >= batch_size:
+            try:
+                client.table("jobs").upsert(batch, on_conflict="job_id").execute()
+                total_synced += len(batch)
+            except Exception as e:
+                print(f"  [Supabase] Error uploading batch: {e}")
+                raise
+            batch.clear()
+
+    if batch:
+        try:
+            client.table("jobs").upsert(batch, on_conflict="job_id").execute()
+            total_synced += len(batch)
+        except Exception as e:
+            print(f"  [Supabase] Error uploading final batch: {e}")
+            raise
+
+    # Refresh PostgreSQL materialized view if available
+    try:
+        client.rpc("refresh_dashboard_stats").execute()
+    except Exception:
+        pass
+
+    return {"synced": total_synced, "skipped": skipped, "status": "success"}
+
+
 def sync_supabase_to_sqlite(target_db=None, target_csv=None, batch_size=1000) -> dict:
     """
     Pulls all jobs from Supabase Cloud and syncs them to local SQLite and unified_jobs.csv.

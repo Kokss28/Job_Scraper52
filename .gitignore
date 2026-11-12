@@ -24,14 +24,10 @@ node_modules/
 *.tsbuildinfo
 next-env.d.ts
 
-# Data outputs, databases, and local tracking files
-Data/*
-!Data/Date/
-!Data/Date/**
+# Data outputs, databases, and local tracking files (Supabase Cloud-Only)
+Data/
+Data/**
 *.csv
-!Data/Date/**/*.csv
-!Data/Date/*.csv
-!Data/extraction_history.csv
 *.db
 *.pdf
 *.json

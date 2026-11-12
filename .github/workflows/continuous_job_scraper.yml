@@ -82,31 +82,6 @@ jobs:
           echo "Executing Automated Rolling Domain Harvester with args: $EXTRA_ARGS"
           python pipeline/automated_domain_extractor.py $EXTRA_ARGS
 
-      - name: Commit & Push Extracted Data Archives
-        if: success()
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add Data/Date/ Data/extraction_history.csv Data/rolling_state.json -f
-          if ! git diff --cached --quiet; then
-            git commit -m "chore(data): auto-archive extracted jobs in Data/Date/ [skip ci]"
-            git pull --rebase origin main || git rebase --abort || true
-            git push origin HEAD:main
-          else
-            echo "No data changes in Data/Date/ to commit."
-          fi
-
-      - name: Upload Extracted CSV Data Artifacts
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: extracted-jobs-data-${{ github.run_number }}
-          path: |
-            Data/Date/
-            Data/extraction_history.csv
-            Data/rolling_state.json
-          retention-days: 30
-
       - name: Workflow Run Summary
         if: always()
         run: |
@@ -115,12 +90,5 @@ jobs:
           echo "- **Execution Mode:** Automatic Sequential Rotation" >> $GITHUB_STEP_SUMMARY
           echo "- **Target Sources:** LinkedIn, Naukri, Indeed" >> $GITHUB_STEP_SUMMARY
           echo "- **Recency Window:** Past 4.0 Hours" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "#### 📁 Extracted CSV Files in Data/Date/" >> $GITHUB_STEP_SUMMARY
-          if [ -d "Data/Date" ]; then
-            find Data/Date -type f -name "*.csv" | sort | while read -r file; do
-              echo "- \`$file\`" >> $GITHUB_STEP_SUMMARY
-            done
-          else
-            echo "- _No files in Data/Date/_" >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "- **Storage:** Directly synchronized to Supabase Cloud (Cloud-Native)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** Completed successfully" >> $GITHUB_STEP_SUMMARY
